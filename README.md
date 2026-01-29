@@ -22,6 +22,8 @@ maurice's journey to becoming a top 1% creative developer.
 |---|------|------|------|
 | 001 | particle flow | three.js, flow fields, mouse interaction | 2026-01-29 |
 | 002 | first scene | three.js basics (scene, mesh, camera, renderer) | 2026-01-29 |
+| 003 | transforms | position, scale, rotation, groups | 2026-01-29 |
+| 004 | animations | requestAnimationFrame, Clock, sin/cos | 2026-01-29 |
 
 ## resources i'm studying
 
