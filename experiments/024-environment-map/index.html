@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>024 - Environment Map</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { overflow: hidden; }
+        canvas { display: block; position: fixed; top: 0; left: 0; outline: none; }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: monospace;
+            font-size: 14px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            max-width: 300px;
+        }
+        .info h3 { margin-bottom: 10px; color: #00ff88; }
+        .info p { margin: 5px 0; font-size: 12px; }
+        .highlight { color: #ffcc00; }
+        .controls { margin-top: 10px; }
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #666;
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover { background: #555; }
+        button.active { background: #00aa66; border-color: #00ff88; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>024 - Environment Map</h3>
+        <p>Environment maps for reflections, background, and lighting</p>
+        <div class="controls">
+            <p class="highlight">Background:</p>
+            <button id="bg-on" class="active">On</button>
+            <button id="bg-off">Off</button>
+        </div>
+        <div class="controls">
+            <p class="highlight">Environment:</p>
+            <button id="env-on" class="active">On</button>
+            <button id="env-off">Off</button>
+        </div>
+        <div class="controls">
+            <p class="highlight">Blur:</p>
+            <button id="blur-0" class="active">0</button>
+            <button id="blur-3">0.3</button>
+            <button id="blur-6">0.6</button>
+            <button id="blur-10">1.0</button>
+        </div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three'
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
+
+        // Canvas & Scene
+        const canvas = document.createElement('canvas')
+        document.body.appendChild(canvas)
+        const scene = new THREE.Scene()
+
+        // Sizes
+        const sizes = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        }
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
+        camera.position.set(4, 2, 5)
+        scene.add(camera)
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+        renderer.setSize(sizes.width, sizes.height)
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        renderer.toneMapping = THREE.ACESFilmicToneMapping
+        renderer.toneMappingExposure = 1
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas)
+        controls.enableDamping = true
+        controls.target.set(0, 0.5, 0)
+
+        // ============================================
+        // ENVIRONMENT MAP LOADING
+        // ============================================
+
+        // Method 1: HDR Environment Map (RGBELoader)
+        // This gives better quality and lighting
+        const rgbeLoader = new RGBELoader()
+        
+        // Using a free HDRI from Poly Haven via jsDelivr CDN
+        rgbeLoader.load(
+            'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr',
+            (environmentMap) => {
+                // Set the mapping for proper sphere projection
+                environmentMap.mapping = THREE.EquirectangularReflectionMapping
+                
+                // Use as scene background (skybox)
+                scene.background = environmentMap
+                
+                // Use as environment for materials (reflections + lighting)
+                scene.environment = environmentMap
+                
+                // Store reference for controls
+                window.envMap = environmentMap
+                
+                console.log('Environment map loaded!')
+            }
+        )
+
+        // ============================================
+        // OBJECTS - Various materials to show reflections
+        // ============================================
+
+        // 1. Chrome sphere (high metalness, low roughness = mirror)
+        const chromeSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 64, 64),
+            new THREE.MeshStandardMaterial({
+                metalness: 1,
+                roughness: 0
+            })
+        )
+        chromeSphere.position.set(-2, 0.5, 0)
+        scene.add(chromeSphere)
+
+        // 2. Gold sphere (metalness with color)
+        const goldSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 64, 64),
+            new THREE.MeshStandardMaterial({
+                color: '#ffd700',
+                metalness: 1,
+                roughness: 0.2
+            })
+        )
+        goldSphere.position.set(0, 0.5, 0)
+        scene.add(goldSphere)
+
+        // 3. Plastic sphere (no metalness, some roughness)
+        const plasticSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 64, 64),
+            new THREE.MeshStandardMaterial({
+                color: '#ff4444',
+                metalness: 0,
+                roughness: 0.5
+            })
+        )
+        plasticSphere.position.set(2, 0.5, 0)
+        scene.add(plasticSphere)
+
+        // 4. Torus knot with varying roughness
+        const torusKnot = new THREE.Mesh(
+            new THREE.TorusKnotGeometry(0.7, 0.25, 100, 16),
+            new THREE.MeshStandardMaterial({
+                color: '#ffffff',
+                metalness: 1,
+                roughness: 0.1
+            })
+        )
+        torusKnot.position.set(0, 2, -1)
+        scene.add(torusKnot)
+
+        // 5. Ground plane
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(20, 20),
+            new THREE.MeshStandardMaterial({
+                color: '#222222',
+                metalness: 0.3,
+                roughness: 0.7
+            })
+        )
+        ground.rotation.x = -Math.PI / 2
+        scene.add(ground)
+
+        // 6. Glass sphere (using MeshPhysicalMaterial for transmission)
+        const glassSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 64, 64),
+            new THREE.MeshPhysicalMaterial({
+                color: '#ffffff',
+                metalness: 0,
+                roughness: 0,
+                transmission: 0.9,  // Glass-like transparency
+                thickness: 1,
+                ior: 1.5  // Index of refraction
+            })
+        )
+        glassSphere.position.set(-2, 0.5, 2)
+        scene.add(glassSphere)
+
+        // ============================================
+        // UI CONTROLS
+        // ============================================
+
+        // Background toggle
+        document.getElementById('bg-on').addEventListener('click', (e) => {
+            if (window.envMap) scene.background = window.envMap
+            document.querySelectorAll('#bg-on, #bg-off').forEach(b => b.classList.remove('active'))
+            e.target.classList.add('active')
+        })
+        document.getElementById('bg-off').addEventListener('click', (e) => {
+            scene.background = new THREE.Color('#111111')
+            document.querySelectorAll('#bg-on, #bg-off').forEach(b => b.classList.remove('active'))
+            e.target.classList.add('active')
+        })
+
+        // Environment toggle
+        document.getElementById('env-on').addEventListener('click', (e) => {
+            if (window.envMap) scene.environment = window.envMap
+            document.querySelectorAll('#env-on, #env-off').forEach(b => b.classList.remove('active'))
+            e.target.classList.add('active')
+        })
+        document.getElementById('env-off').addEventListener('click', (e) => {
+            scene.environment = null
+            document.querySelectorAll('#env-on, #env-off').forEach(b => b.classList.remove('active'))
+            e.target.classList.add('active')
+        })
+
+        // Background blur
+        const blurButtons = ['blur-0', 'blur-3', 'blur-6', 'blur-10']
+        blurButtons.forEach(id => {
+            document.getElementById(id).addEventListener('click', (e) => {
+                const blur = parseFloat(id.split('-')[1]) / 10
+                scene.backgroundBlurriness = blur
+                blurButtons.forEach(b => document.getElementById(b).classList.remove('active'))
+                e.target.classList.add('active')
+            })
+        })
+
+        // ============================================
+        // RESIZE HANDLER
+        // ============================================
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth
+            sizes.height = window.innerHeight
+            camera.aspect = sizes.width / sizes.height
+            camera.updateProjectionMatrix()
+            renderer.setSize(sizes.width, sizes.height)
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        })
+
+        // ============================================
+        // ANIMATION LOOP
+        // ============================================
+        const clock = new THREE.Clock()
+
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime()
+
+            // Animate torus knot
+            torusKnot.rotation.y = elapsedTime * 0.3
+            torusKnot.rotation.x = elapsedTime * 0.2
+
+            // Update controls
+            controls.update()
+
+            // Render
+            renderer.render(scene, camera)
+
+            requestAnimationFrame(tick)
+        }
+
+        tick()
+
+        // ============================================
+        // LEARNINGS SUMMARY
+        // ============================================
+        /*
+        ENVIRONMENT MAP KEY CONCEPTS:
+
+        1. LOADING METHODS:
+           
+           a) CubeTextureLoader (6 images):
+              const cubeTextureLoader = new THREE.CubeTextureLoader()
+              const envMap = cubeTextureLoader.load([
+                  'px.png', 'nx.png',  // positive/negative X
+                  'py.png', 'ny.png',  // positive/negative Y
+                  'pz.png', 'nz.png'   // positive/negative Z
+              ])
+           
+           b) RGBELoader (HDR - better quality):
+              import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
+              const rgbeLoader = new RGBELoader()
+              rgbeLoader.load('environment.hdr', (envMap) => {
+                  envMap.mapping = THREE.EquirectangularReflectionMapping
+                  scene.background = envMap
+                  scene.environment = envMap
+              })
+
+        2. APPLYING TO SCENE:
+           scene.background = envMap      // Visible skybox
+           scene.environment = envMap     // Reflections + IBL lighting
+           scene.backgroundBlurriness = 0.5  // Blur the background
+
+        3. APPLYING TO MATERIALS:
+           // Individual material override
+           material.envMap = envMap
+           material.envMapIntensity = 1
+           
+           // scene.environment applies to ALL standard/physical materials
+
+        4. MATERIAL PROPERTIES FOR REFLECTIONS:
+           - metalness: 1 = metal, 0 = plastic
+           - roughness: 0 = mirror, 1 = matte
+           - envMapIntensity: strength of reflections
+
+        5. TONE MAPPING (for HDR):
+           renderer.toneMapping = THREE.ACESFilmicToneMapping
+           renderer.toneMappingExposure = 1
+
+        6. RESOURCES:
+           - polyhaven.com/hdris (free HDRIs)
+           - matheowis.github.io/HDRI-to-CubeMap/ (convert HDRI to cube)
+           - Blender can generate HDRIs too
+        */
+    </script>
+</body>
+</html>

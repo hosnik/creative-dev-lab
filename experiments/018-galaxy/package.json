@@ -1,0 +1,6 @@
+{
+  "name": "018-galaxy",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": { "three": "^0.170.0", "lil-gui": "^0.19.2" },
+  "devDependencies": { "vite": "^6.0.0" }
+}

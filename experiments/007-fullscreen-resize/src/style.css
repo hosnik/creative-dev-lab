@@ -1,0 +1,19 @@
+/* Reset all margins and padding */
+* {
+    margin: 0;
+    padding: 0;
+}
+
+/* Prevent scrolling */
+html,
+body {
+    overflow: hidden;
+}
+
+/* Fix canvas position and remove outline */
+.webgl {
+    position: fixed;
+    top: 0;
+    left: 0;
+    outline: none;
+}

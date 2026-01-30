@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>028 - Shader Patterns</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { overflow: hidden; background: #111; }
+        canvas { display: block; position: fixed; top: 0; left: 0; outline: none; }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            background: rgba(0,0,0,0.85);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            max-width: 280px;
+        }
+        .info h3 { margin-bottom: 10px; color: #ff00ff; font-size: 14px; }
+        .controls { margin-top: 10px; }
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #666;
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        button:hover { background: #555; }
+        button.active { background: #ff00ff; border-color: #ff00ff; }
+        .highlight { color: #00ffff; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>028 - Shader Patterns</h3>
+        <p>Click patterns to switch:</p>
+        <div class="controls" id="buttons"></div>
+        <p class="highlight" id="current" style="margin-top: 10px;">Pattern: Gradient</p>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three'
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+
+        // Setup
+        const canvas = document.createElement('canvas')
+        document.body.appendChild(canvas)
+        const scene = new THREE.Scene()
+        const sizes = { width: window.innerWidth, height: window.innerHeight }
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
+        camera.position.set(0, 0, 1.5)
+        scene.add(camera)
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+        renderer.setSize(sizes.width, sizes.height)
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+        const controls = new OrbitControls(camera, canvas)
+        controls.enableDamping = true
+
+        // ============================================
+        // SHADER PATTERNS - Fragment Shaders
+        // ============================================
+
+        // Common vertex shader for all patterns
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `
+
+        // Pattern shaders
+        const patterns = {
+            // 1. Simple gradient
+            gradient: `
+                varying vec2 vUv;
+                void main() {
+                    gl_FragColor = vec4(vUv.x, vUv.y, 1.0, 1.0);
+                }
+            `,
+            
+            // 2. Horizontal stripes using step()
+            stripes: `
+                varying vec2 vUv;
+                void main() {
+                    float strength = mod(vUv.y * 20.0, 1.0);
+                    strength = step(0.5, strength);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 3. Grid pattern
+            grid: `
+                varying vec2 vUv;
+                void main() {
+                    float barX = step(0.9, mod(vUv.x * 10.0, 1.0));
+                    float barY = step(0.9, mod(vUv.y * 10.0, 1.0));
+                    float strength = max(barX, barY);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 4. Dots pattern
+            dots: `
+                varying vec2 vUv;
+                void main() {
+                    vec2 cell = fract(vUv * 10.0);
+                    float dist = distance(cell, vec2(0.5));
+                    float strength = step(0.25, dist);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 5. Concentric circles
+            circles: `
+                varying vec2 vUv;
+                void main() {
+                    float dist = distance(vUv, vec2(0.5));
+                    float strength = sin(dist * 50.0);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 6. Radial gradient
+            radial: `
+                varying vec2 vUv;
+                void main() {
+                    float dist = distance(vUv, vec2(0.5));
+                    float strength = 1.0 - dist * 2.0;
+                    strength = clamp(strength, 0.0, 1.0);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 7. Checkerboard
+            checker: `
+                varying vec2 vUv;
+                void main() {
+                    float x = floor(vUv.x * 10.0);
+                    float y = floor(vUv.y * 10.0);
+                    float strength = mod(x + y, 2.0);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 8. Noise-like pattern (pseudo-random)
+            noise: `
+                varying vec2 vUv;
+                
+                float random(vec2 st) {
+                    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+                
+                void main() {
+                    float strength = random(vUv * 100.0);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 9. Gradient with steps
+            stepped: `
+                varying vec2 vUv;
+                void main() {
+                    float strength = floor(vUv.x * 10.0) / 10.0;
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 10. Cross pattern
+            cross: `
+                varying vec2 vUv;
+                void main() {
+                    float barX = step(0.4, vUv.x) - step(0.6, vUv.x);
+                    float barY = step(0.4, vUv.y) - step(0.6, vUv.y);
+                    float strength = max(barX, barY);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 11. Diamond
+            diamond: `
+                varying vec2 vUv;
+                void main() {
+                    vec2 centered = abs(vUv - 0.5);
+                    float strength = step(0.25, centered.x + centered.y);
+                    gl_FragColor = vec4(vec3(1.0 - strength), 1.0);
+                }
+            `,
+            
+            // 12. Animated waves
+            waves: `
+                uniform float uTime;
+                varying vec2 vUv;
+                void main() {
+                    float strength = sin(vUv.x * 30.0 + uTime * 3.0) * 0.5 + 0.5;
+                    strength *= sin(vUv.y * 30.0 + uTime * 2.0) * 0.5 + 0.5;
+                    gl_FragColor = vec4(strength, strength * 0.5, 1.0 - strength, 1.0);
+                }
+            `,
+            
+            // 13. Perlin-like noise (value noise)
+            perlin: `
+                varying vec2 vUv;
+                
+                float random(vec2 st) {
+                    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+                
+                float noise(vec2 st) {
+                    vec2 i = floor(st);
+                    vec2 f = fract(st);
+                    
+                    float a = random(i);
+                    float b = random(i + vec2(1.0, 0.0));
+                    float c = random(i + vec2(0.0, 1.0));
+                    float d = random(i + vec2(1.0, 1.0));
+                    
+                    vec2 u = f * f * (3.0 - 2.0 * f);
+                    
+                    return mix(a, b, u.x) +
+                           (c - a) * u.y * (1.0 - u.x) +
+                           (d - b) * u.x * u.y;
+                }
+                
+                void main() {
+                    float strength = noise(vUv * 10.0);
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 14. Star shape
+            star: `
+                varying vec2 vUv;
+                void main() {
+                    vec2 centered = vUv - 0.5;
+                    float angle = atan(centered.y, centered.x);
+                    float radius = length(centered);
+                    
+                    float strength = sin(angle * 5.0) * 0.1 + 0.3;
+                    strength = step(radius, strength);
+                    
+                    gl_FragColor = vec4(vec3(strength), 1.0);
+                }
+            `,
+            
+            // 15. Rainbow spiral
+            spiral: `
+                uniform float uTime;
+                varying vec2 vUv;
+                void main() {
+                    vec2 centered = vUv - 0.5;
+                    float angle = atan(centered.y, centered.x);
+                    float radius = length(centered);
+                    
+                    float hue = angle / 6.28318 + radius * 3.0 + uTime * 0.5;
+                    
+                    // HSV to RGB approximation
+                    vec3 color = 0.5 + 0.5 * cos(6.28318 * (hue + vec3(0.0, 0.33, 0.67)));
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        }
+
+        // Create material
+        let currentMaterial = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: patterns.gradient,
+            uniforms: { uTime: { value: 0 } }
+        })
+
+        // Geometry
+        const geometry = new THREE.PlaneGeometry(2, 2, 1, 1)
+        const mesh = new THREE.Mesh(geometry, currentMaterial)
+        scene.add(mesh)
+
+        // Create buttons
+        const buttonsDiv = document.getElementById('buttons')
+        const currentLabel = document.getElementById('current')
+        
+        Object.keys(patterns).forEach((name, i) => {
+            const btn = document.createElement('button')
+            btn.textContent = name
+            btn.onclick = () => {
+                currentMaterial.fragmentShader = patterns[name]
+                currentMaterial.needsUpdate = true
+                currentLabel.textContent = `Pattern: ${name}`
+                
+                document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'))
+                btn.classList.add('active')
+            }
+            if (i === 0) btn.classList.add('active')
+            buttonsDiv.appendChild(btn)
+        })
+
+        // Resize
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth
+            sizes.height = window.innerHeight
+            camera.aspect = sizes.width / sizes.height
+            camera.updateProjectionMatrix()
+            renderer.setSize(sizes.width, sizes.height)
+        })
+
+        // Animation
+        const clock = new THREE.Clock()
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime()
+            currentMaterial.uniforms.uTime.value = elapsedTime
+            controls.update()
+            renderer.render(scene, camera)
+            requestAnimationFrame(tick)
+        }
+        tick()
+
+        // ============================================
+        // PATTERN TECHNIQUES SUMMARY
+        // ============================================
+        /*
+        KEY SHADER PATTERN TECHNIQUES:
+
+        1. UV COORDINATES (vUv):
+           - Range: 0.0 to 1.0 for both x and y
+           - Bottom-left (0,0), top-right (1,1)
+
+        2. STEP FUNCTION:
+           step(edge, x) → 0.0 if x < edge, else 1.0
+           Creates hard edges/thresholds
+
+        3. SMOOTHSTEP:
+           smoothstep(a, b, x) → smooth transition between a and b
+           Great for anti-aliased edges
+
+        4. MOD & FRACT:
+           mod(x, y) → remainder (can be negative)
+           fract(x) → fractional part (always positive)
+           Great for repeating patterns
+
+        5. FLOOR:
+           floor(x) → round down
+           Great for stepping/quantizing
+
+        6. DISTANCE:
+           distance(a, b) → length between points
+           Great for circular patterns
+
+        7. ATAN:
+           atan(y, x) → angle in radians
+           Great for radial/spiral patterns
+
+        8. RANDOM/NOISE:
+           Random: fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453)
+           Value noise: interpolate random values
+
+        9. MIX:
+           mix(a, b, t) → linear interpolation
+           Great for blending colors/values
+
+        10. SIN/COS:
+            For waves, oscillation, smooth patterns
+
+        11. ABS:
+            abs(x) → absolute value
+            Great for symmetric patterns
+
+        12. CLAMP:
+            clamp(x, min, max) → constrain to range
+        */
+    </script>
+</body>
+</html>

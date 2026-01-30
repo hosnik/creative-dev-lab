@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>025 - Realistic Render</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { overflow: hidden; }
+        canvas { display: block; position: fixed; top: 0; left: 0; outline: none; }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            max-width: 280px;
+        }
+        .info h3 { margin-bottom: 10px; color: #00ff88; font-size: 14px; }
+        .info p { margin: 4px 0; }
+        .highlight { color: #ffcc00; }
+        .section { margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; }
+        select, input[type="range"] {
+            background: #333;
+            color: white;
+            border: 1px solid #666;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+        input[type="range"] { width: 80px; vertical-align: middle; }
+        label { display: block; margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>025 - Realistic Render</h3>
+        
+        <div class="section">
+            <p class="highlight">Tone Mapping:</p>
+            <select id="toneMapping">
+                <option value="none">None</option>
+                <option value="linear">Linear</option>
+                <option value="reinhard">Reinhard</option>
+                <option value="cineon">Cineon</option>
+                <option value="aces" selected>ACES Filmic</option>
+                <option value="agx">AgX</option>
+            </select>
+        </div>
+        
+        <div class="section">
+            <label>
+                <span class="highlight">Exposure:</span>
+                <input type="range" id="exposure" min="0" max="3" step="0.1" value="1">
+                <span id="exposureVal">1.0</span>
+            </label>
+        </div>
+        
+        <div class="section">
+            <label>
+                <span class="highlight">Shadow Quality:</span>
+                <select id="shadowQuality">
+                    <option value="512">512</option>
+                    <option value="1024" selected>1024</option>
+                    <option value="2048">2048</option>
+                    <option value="4096">4096</option>
+                </select>
+            </label>
+        </div>
+        
+        <div class="section">
+            <label>
+                <span class="highlight">Env Intensity:</span>
+                <input type="range" id="envIntensity" min="0" max="3" step="0.1" value="1">
+                <span id="envIntensityVal">1.0</span>
+            </label>
+        </div>
+        
+        <div class="section">
+            <p style="font-size: 10px; color: #888; margin-top: 8px;">
+                Key settings for photorealism:<br>
+                • Proper tone mapping (ACES/AgX)<br>
+                • Output encoding (sRGB)<br>
+                • Physical lights<br>
+                • Correct model scale<br>
+                • Soft shadows
+            </p>
+        </div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three'
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+
+        // Canvas & Scene
+        const canvas = document.createElement('canvas')
+        document.body.appendChild(canvas)
+        const scene = new THREE.Scene()
+
+        // Sizes
+        const sizes = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        }
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
+        camera.position.set(4, 2, 5)
+        scene.add(camera)
+
+        // ============================================
+        // RENDERER - REALISTIC SETTINGS
+        // ============================================
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas, 
+            antialias: true  // Smooth edges
+        })
+        renderer.setSize(sizes.width, sizes.height)
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+        // Output encoding (automatic in recent Three.js)
+        // renderer.outputColorSpace = THREE.SRGBColorSpace  // default
+
+        // Tone mapping - compresses HDR to LDR for display
+        renderer.toneMapping = THREE.ACESFilmicToneMapping
+        renderer.toneMappingExposure = 1
+
+        // Shadows
+        renderer.shadowMap.enabled = true
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap  // Soft shadows
+
+        // Physical light units
+        renderer.useLegacyLights = false  // Use physically correct lights
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas)
+        controls.enableDamping = true
+        controls.target.set(0, 0.5, 0)
+
+        // ============================================
+        // ENVIRONMENT MAP (for lighting + reflections)
+        // ============================================
+        const rgbeLoader = new RGBELoader()
+        rgbeLoader.load(
+            'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr',
+            (environmentMap) => {
+                environmentMap.mapping = THREE.EquirectangularReflectionMapping
+                scene.background = environmentMap
+                scene.environment = environmentMap
+                scene.backgroundBlurriness = 0.1
+            }
+        )
+
+        // ============================================
+        // LIGHTS - Physical units
+        // ============================================
+        
+        // Directional light (sun-like)
+        const directionalLight = new THREE.DirectionalLight('#ffffff', 3)
+        directionalLight.position.set(5, 5, 2)
+        directionalLight.castShadow = true
+        
+        // Shadow quality settings
+        directionalLight.shadow.mapSize.set(1024, 1024)
+        directionalLight.shadow.camera.near = 0.1
+        directionalLight.shadow.camera.far = 20
+        directionalLight.shadow.camera.top = 5
+        directionalLight.shadow.camera.right = 5
+        directionalLight.shadow.camera.bottom = -5
+        directionalLight.shadow.camera.left = -5
+        
+        // Shadow softness
+        directionalLight.shadow.normalBias = 0.05  // Reduces shadow acne
+        directionalLight.shadow.bias = -0.001
+        
+        scene.add(directionalLight)
+
+        // ============================================
+        // OBJECTS
+        // ============================================
+
+        // Ground plane with realistic material
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            color: '#555555',
+            roughness: 0.8,
+            metalness: 0
+        })
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(20, 20),
+            groundMaterial
+        )
+        ground.rotation.x = -Math.PI / 2
+        ground.receiveShadow = true
+        scene.add(ground)
+
+        // Various material spheres
+        const sphereGeometry = new THREE.SphereGeometry(0.5, 64, 64)
+        
+        // Chrome (mirror)
+        const chrome = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({
+            color: '#ffffff',
+            metalness: 1,
+            roughness: 0
+        }))
+        chrome.position.set(-2, 0.5, 0)
+        chrome.castShadow = true
+        scene.add(chrome)
+
+        // Brushed metal
+        const brushedMetal = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({
+            color: '#aaaaaa',
+            metalness: 1,
+            roughness: 0.3
+        }))
+        brushedMetal.position.set(-0.7, 0.5, 0)
+        brushedMetal.castShadow = true
+        scene.add(brushedMetal)
+
+        // Plastic
+        const plastic = new THREE.Mesh(sphereGeometry, new THREE.MeshStandardMaterial({
+            color: '#ff4444',
+            metalness: 0,
+            roughness: 0.5
+        }))
+        plastic.position.set(0.7, 0.5, 0)
+        plastic.castShadow = true
+        scene.add(plastic)
+
+        // Glass (physical material)
+        const glass = new THREE.Mesh(sphereGeometry, new THREE.MeshPhysicalMaterial({
+            color: '#ffffff',
+            metalness: 0,
+            roughness: 0,
+            transmission: 0.95,
+            thickness: 1,
+            ior: 1.5,
+            clearcoat: 1
+        }))
+        glass.position.set(2, 0.5, 0)
+        glass.castShadow = true
+        scene.add(glass)
+
+        // Torus knot for visual interest
+        const torusKnot = new THREE.Mesh(
+            new THREE.TorusKnotGeometry(0.6, 0.2, 128, 32),
+            new THREE.MeshStandardMaterial({
+                color: '#ffcc00',
+                metalness: 0.8,
+                roughness: 0.2
+            })
+        )
+        torusKnot.position.set(0, 1.8, -1.5)
+        torusKnot.castShadow = true
+        scene.add(torusKnot)
+
+        // ============================================
+        // UI CONTROLS
+        // ============================================
+        
+        const toneMappingSelect = document.getElementById('toneMapping')
+        const toneMappingOptions = {
+            'none': THREE.NoToneMapping,
+            'linear': THREE.LinearToneMapping,
+            'reinhard': THREE.ReinhardToneMapping,
+            'cineon': THREE.CineonToneMapping,
+            'aces': THREE.ACESFilmicToneMapping,
+            'agx': THREE.AgXToneMapping
+        }
+        toneMappingSelect.addEventListener('change', (e) => {
+            renderer.toneMapping = toneMappingOptions[e.target.value]
+        })
+
+        const exposureSlider = document.getElementById('exposure')
+        const exposureVal = document.getElementById('exposureVal')
+        exposureSlider.addEventListener('input', (e) => {
+            renderer.toneMappingExposure = parseFloat(e.target.value)
+            exposureVal.textContent = parseFloat(e.target.value).toFixed(1)
+        })
+
+        const shadowQualitySelect = document.getElementById('shadowQuality')
+        shadowQualitySelect.addEventListener('change', (e) => {
+            const size = parseInt(e.target.value)
+            directionalLight.shadow.mapSize.set(size, size)
+            directionalLight.shadow.map?.dispose()
+            directionalLight.shadow.map = null
+        })
+
+        const envIntensitySlider = document.getElementById('envIntensity')
+        const envIntensityVal = document.getElementById('envIntensityVal')
+        envIntensitySlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value)
+            scene.environmentIntensity = val
+            envIntensityVal.textContent = val.toFixed(1)
+        })
+
+        // ============================================
+        // RESIZE
+        // ============================================
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth
+            sizes.height = window.innerHeight
+            camera.aspect = sizes.width / sizes.height
+            camera.updateProjectionMatrix()
+            renderer.setSize(sizes.width, sizes.height)
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        })
+
+        // ============================================
+        // ANIMATION
+        // ============================================
+        const clock = new THREE.Clock()
+
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime()
+
+            // Subtle animation
+            torusKnot.rotation.y = elapsedTime * 0.2
+            torusKnot.rotation.x = elapsedTime * 0.1
+
+            controls.update()
+            renderer.render(scene, camera)
+            requestAnimationFrame(tick)
+        }
+
+        tick()
+
+        // ============================================
+        // LEARNINGS SUMMARY
+        // ============================================
+        /*
+        REALISTIC RENDER KEY CONCEPTS:
+
+        1. TONE MAPPING - Compresses HDR to displayable LDR:
+           renderer.toneMapping = THREE.ACESFilmicToneMapping  // Most realistic
+           renderer.toneMappingExposure = 1                     // Brightness control
+           
+           Options: NoToneMapping, LinearToneMapping, ReinhardToneMapping,
+                    CineonToneMapping, ACESFilmicToneMapping, AgXToneMapping
+
+        2. OUTPUT ENCODING:
+           renderer.outputColorSpace = THREE.SRGBColorSpace  // Default in recent versions
+           
+           For textures:
+           texture.colorSpace = THREE.SRGBColorSpace  // For color textures
+           texture.colorSpace = THREE.NoColorSpace    // For normal/roughness maps
+
+        3. SHADOWS:
+           renderer.shadowMap.enabled = true
+           renderer.shadowMap.type = THREE.PCFSoftShadowMap  // Soft edges
+           
+           light.shadow.mapSize.set(1024, 1024)  // Higher = sharper
+           light.shadow.normalBias = 0.05         // Reduces shadow acne
+           light.shadow.bias = -0.001
+
+        4. SHADOW CAMERA BOUNDS (for directional lights):
+           light.shadow.camera.near = 0.1
+           light.shadow.camera.far = 20
+           light.shadow.camera.top/right/bottom/left = appropriate values
+
+        5. ANTI-ALIASING:
+           new THREE.WebGLRenderer({ antialias: true })
+           OR post-processing SMAA/FXAA
+
+        6. PIXEL RATIO:
+           renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+           // Cap at 2 for performance
+
+        7. PHYSICAL LIGHTS:
+           renderer.useLegacyLights = false
+           // Light intensity in physical units (lumens)
+
+        8. ENVIRONMENT MAP:
+           scene.environment = envMap    // For all materials
+           scene.backgroundBlurriness    // Depth of field effect
+
+        9. MODEL CONSIDERATIONS:
+           - Correct scale (1 unit = 1 meter recommended)
+           - Proper normals
+           - UV mapping for textures
+           - Apply transforms in Blender before export
+        */
+    </script>
+</body>
+</html>

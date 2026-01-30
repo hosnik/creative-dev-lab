@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>022 - Raycaster and Mouse Events</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { overflow: hidden; }
+        canvas { display: block; position: fixed; top: 0; left: 0; outline: none; }
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: monospace;
+            font-size: 14px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+        .info h3 { margin-bottom: 10px; color: #00ff88; }
+        .info p { margin: 5px 0; }
+        .highlight { color: #ffcc00; }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h3>022 - Raycaster & Mouse Events</h3>
+        <p>Hover spheres to change color</p>
+        <p>Click spheres for interaction</p>
+        <p class="highlight" id="status">Status: Ready</p>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three'
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+
+        // Canvas & Scene
+        const canvas = document.createElement('canvas')
+        document.body.appendChild(canvas)
+        const scene = new THREE.Scene()
+
+        // Status display
+        const statusEl = document.getElementById('status')
+
+        // Sizes
+        const sizes = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        }
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
+        camera.position.z = 5
+        scene.add(camera)
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+        renderer.setSize(sizes.width, sizes.height)
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        renderer.setClearColor('#1a1a2e')
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas)
+        controls.enableDamping = true
+
+        // ============================================
+        // RAYCASTER SETUP
+        // ============================================
+        const raycaster = new THREE.Raycaster()
+
+        // Mouse vector: needs -1 to +1 coordinates
+        const mouse = new THREE.Vector2()
+
+        // Track currently hovered object for enter/leave events
+        let currentIntersect = null
+
+        // ============================================
+        // OBJECTS TO TEST
+        // ============================================
+        
+        // Create spheres with individual materials (so we can change colors)
+        const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 32)
+        
+        const object1 = new THREE.Mesh(
+            sphereGeometry,
+            new THREE.MeshStandardMaterial({ color: '#ff0000' })
+        )
+        object1.position.x = -2
+        object1.name = 'Sphere 1'
+
+        const object2 = new THREE.Mesh(
+            sphereGeometry,
+            new THREE.MeshStandardMaterial({ color: '#ff0000' })
+        )
+        object2.name = 'Sphere 2'
+
+        const object3 = new THREE.Mesh(
+            sphereGeometry,
+            new THREE.MeshStandardMaterial({ color: '#ff0000' })
+        )
+        object3.position.x = 2
+        object3.name = 'Sphere 3'
+
+        scene.add(object1, object2, object3)
+
+        // Array of objects to test
+        const objectsToTest = [object1, object2, object3]
+
+        // ============================================
+        // LIGHTS
+        // ============================================
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+        scene.add(ambientLight)
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5)
+        directionalLight.position.set(5, 5, 5)
+        scene.add(directionalLight)
+
+        // ============================================
+        // MOUSE EVENTS
+        // ============================================
+        
+        // Update mouse position (convert to -1 to +1 range)
+        window.addEventListener('mousemove', (event) => {
+            // Horizontal: 0 to width → -1 to +1
+            mouse.x = (event.clientX / sizes.width) * 2 - 1
+            // Vertical: 0 to height → +1 to -1 (inverted because Y goes down in screen coords)
+            mouse.y = -(event.clientY / sizes.height) * 2 + 1
+        })
+
+        // Click event
+        window.addEventListener('click', () => {
+            if (currentIntersect) {
+                // Interaction based on which object was clicked
+                const obj = currentIntersect.object
+                
+                // Scale animation on click
+                obj.scale.setScalar(1.5)
+                setTimeout(() => obj.scale.setScalar(1), 200)
+                
+                statusEl.textContent = `Clicked: ${obj.name}`
+                statusEl.style.color = '#00ff88'
+                
+                console.log('Clicked:', obj.name)
+                console.log('Intersection point:', currentIntersect.point)
+                console.log('Distance:', currentIntersect.distance)
+            }
+        })
+
+        // ============================================
+        // MANUAL RAY CASTING (for visualization)
+        // ============================================
+        
+        // Visualize a static ray
+        const rayOrigin = new THREE.Vector3(-4, 0, 0)
+        const rayDirection = new THREE.Vector3(1, 0, 0) // Already length 1
+        rayDirection.normalize() // Good practice even if already normalized
+
+        // Arrow helper to visualize the ray
+        const arrowHelper = new THREE.ArrowHelper(
+            rayDirection,
+            rayOrigin,
+            8,
+            0x00ff00,
+            0.5,
+            0.3
+        )
+        scene.add(arrowHelper)
+
+        // ============================================
+        // RESIZE HANDLER
+        // ============================================
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth
+            sizes.height = window.innerHeight
+            camera.aspect = sizes.width / sizes.height
+            camera.updateProjectionMatrix()
+            renderer.setSize(sizes.width, sizes.height)
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        })
+
+        // ============================================
+        // ANIMATION LOOP
+        // ============================================
+        const clock = new THREE.Clock()
+
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime()
+
+            // Animate spheres (wave motion)
+            object1.position.y = Math.sin(elapsedTime * 0.3) * 1.5
+            object2.position.y = Math.sin(elapsedTime * 0.8) * 1.5
+            object3.position.y = Math.sin(elapsedTime * 1.4) * 1.5
+
+            // ============================================
+            // RAYCASTING FROM MOUSE
+            // ============================================
+            
+            // Set ray from camera through mouse position
+            raycaster.setFromCamera(mouse, camera)
+
+            // Test intersections
+            const intersects = raycaster.intersectObjects(objectsToTest)
+
+            // Reset all to red
+            for (const object of objectsToTest) {
+                object.material.color.set('#ff0000')
+            }
+
+            // Set intersected to blue
+            for (const intersect of intersects) {
+                intersect.object.material.color.set('#0000ff')
+            }
+
+            // ============================================
+            // MOUSE ENTER/LEAVE EVENTS
+            // ============================================
+            if (intersects.length) {
+                if (!currentIntersect) {
+                    // Mouse just entered an object
+                    console.log('Mouse enter:', intersects[0].object.name)
+                    document.body.style.cursor = 'pointer'
+                }
+                currentIntersect = intersects[0]
+            } else {
+                if (currentIntersect) {
+                    // Mouse just left an object
+                    console.log('Mouse leave:', currentIntersect.object.name)
+                    document.body.style.cursor = 'default'
+                    statusEl.textContent = 'Status: Ready'
+                    statusEl.style.color = '#ffcc00'
+                }
+                currentIntersect = null
+            }
+
+            // ============================================
+            // STATIC RAY TEST (the green arrow)
+            // ============================================
+            raycaster.set(rayOrigin, rayDirection)
+            const staticIntersects = raycaster.intersectObjects(objectsToTest)
+            
+            // Make intersected by static ray turn green
+            for (const intersect of staticIntersects) {
+                // Only if not already hovered by mouse
+                if (!intersects.find(i => i.object === intersect.object)) {
+                    intersect.object.material.color.set('#00ff00')
+                }
+            }
+
+            // Update controls
+            controls.update()
+
+            // Render
+            renderer.render(scene, camera)
+
+            requestAnimationFrame(tick)
+        }
+
+        tick()
+
+        // ============================================
+        // LEARNINGS SUMMARY
+        // ============================================
+        /*
+        RAYCASTER KEY CONCEPTS:
+        
+        1. CREATING A RAYCASTER:
+           const raycaster = new THREE.Raycaster()
+        
+        2. MANUAL RAY SETUP:
+           raycaster.set(origin: Vector3, direction: Vector3)
+           - direction MUST be normalized (length = 1)
+           - use direction.normalize() to ensure this
+        
+        3. RAY FROM CAMERA/MOUSE:
+           raycaster.setFromCamera(mouse: Vector2, camera)
+           - mouse coords must be -1 to +1 range
+           - x: (clientX / width) * 2 - 1
+           - y: -(clientY / height) * 2 + 1 (note the negative!)
+        
+        4. TESTING INTERSECTIONS:
+           - intersectObject(mesh) → test single object
+           - intersectObjects([mesh1, mesh2, ...]) → test array
+           - Both return an ARRAY (even for single object)
+        
+        5. INTERSECTION RESULT PROPERTIES:
+           - distance: how far from ray origin
+           - face: which face was hit
+           - faceIndex: index of that face
+           - object: the mesh that was hit
+           - point: Vector3 of exact hit location
+           - uv: UV coordinates at hit point
+        
+        6. MOUSE EVENTS PATTERN:
+           - Track currentIntersect variable
+           - If intersects.length && !currentIntersect → mouseenter
+           - If !intersects.length && currentIntersect → mouseleave
+           - On click, check currentIntersect for clicked object
+        
+        7. WITH LOADED MODELS:
+           - Pass gltf.scene or gltf.scene.children
+           - May need recursive: true for nested meshes
+           - Intersection still returns individual meshes
+        */
+    </script>
+</body>
+</html>
